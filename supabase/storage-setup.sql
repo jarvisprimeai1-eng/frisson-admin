@@ -1,15 +1,31 @@
 -- ═══════════════════════════════════════════════════════════════════
--- STORAGE BUCKETS — for audio files and cover images
+-- STORAGE BUCKETS — safe to re-run (uses ON CONFLICT + DROP POLICY IF EXISTS)
 -- Run after schema.sql
 -- ═══════════════════════════════════════════════════════════════════
 
--- Create buckets (public reads, authenticated writes)
+-- Create buckets (skip if they exist)
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) VALUES
   ('meditations', 'meditations', true, 52428800, ARRAY['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/m4a', 'audio/mp4']),
   ('covers',      'covers',      true, 5242880,  ARRAY['image/png', 'image/jpeg', 'image/webp']),
-  ('books',       'books',       true, 10485760, ARRAY['application/pdf', 'image/png', 'image/jpeg']);
+  ('books',       'books',       true, 10485760, ARRAY['application/pdf', 'image/png', 'image/jpeg'])
+ON CONFLICT (id) DO UPDATE SET
+  public = EXCLUDED.public,
+  file_size_limit = EXCLUDED.file_size_limit,
+  allowed_mime_types = EXCLUDED.allowed_mime_types;
 
--- Policies: public can read, only admins can write
+-- Drop existing policies before recreating
+DROP POLICY IF EXISTS "Public read meditations audio" ON storage.objects;
+DROP POLICY IF EXISTS "Admins upload meditations" ON storage.objects;
+DROP POLICY IF EXISTS "Admins update meditations" ON storage.objects;
+DROP POLICY IF EXISTS "Admins delete meditations" ON storage.objects;
+DROP POLICY IF EXISTS "Public read covers" ON storage.objects;
+DROP POLICY IF EXISTS "Admins upload covers" ON storage.objects;
+DROP POLICY IF EXISTS "Admins update covers" ON storage.objects;
+DROP POLICY IF EXISTS "Admins delete covers" ON storage.objects;
+DROP POLICY IF EXISTS "Public read books" ON storage.objects;
+DROP POLICY IF EXISTS "Admins upload books" ON storage.objects;
+
+-- Meditations: public read, admin write
 CREATE POLICY "Public read meditations audio" ON storage.objects FOR SELECT
   USING (bucket_id = 'meditations');
 
@@ -31,7 +47,7 @@ CREATE POLICY "Admins delete meditations" ON storage.objects FOR DELETE
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
   );
 
--- Same for covers
+-- Covers
 CREATE POLICY "Public read covers" ON storage.objects FOR SELECT
   USING (bucket_id = 'covers');
 
@@ -53,7 +69,7 @@ CREATE POLICY "Admins delete covers" ON storage.objects FOR DELETE
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
   );
 
--- Same for books
+-- Books
 CREATE POLICY "Public read books" ON storage.objects FOR SELECT
   USING (bucket_id = 'books');
 
